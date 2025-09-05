@@ -16,11 +16,12 @@ spec:
       containers:
       - name: loader
         image: busybox:latest
-        # Эта команда будет бесконечно запрашивать наш сервис webapp-service, создавая нагрузку
         command: ["/bin/sh", "-c"]
-        args: ["while true; do wget -q -O- http://webapp-service; done"]
+        # Эта команда запускает 10 бесконечных циклов wget в фоне параллельно.
+        # Это создает гораздо более интенсивную нагрузку, чем один цикл.
+        args:
+          - "for i in $(seq 1 10); do while true; do wget -q -O- http://webapp-service; done & done; wait"
         resources:
           limits:
-            # Ограничиваем каждый генератор 0.25 CPU. В сумме они смогут съесть 1 CPU,
-            # чего достаточно для нагрузки, но это не убьет систему.
-            cpu: "250m"
+            # Увеличиваем лимит для одной реплики, т.к. она теперь делает больше работы
+            cpu: "500m"

@@ -5,11 +5,15 @@
 
   tasks:
     - name: "ШАГ 0: Гарантированная зачистка перед стартом"
-      command: kind delete cluster
+      command: kind delete cluster --name mindbox-test
       ignore_errors: yes
       
     - name: "ШАГ 1: Создаем локальный кластер Kubernetes (Kind) с 3-мя зонами"
-      command: kind create cluster --config kind-config.yaml
+      command: kind create cluster --config kind-config.yaml --name mindbox-test
+
+    - name: "ШАГ 1.1: Загружаем наш локально собранный Docker-образ в кластер"
+      command: kind load docker-image my-webapp:latest --name mindbox-test
+      changed_when: false # Эта команда не меняет состояние, а только загружает
 
     - name: "ШАГ 1.5: Устанавливаем Metrics Server с помощью Kustomize (из локальных файлов)"
       # команда kubectl apply -k <папка> применяет kustomization.yaml из этой папки
@@ -180,4 +184,4 @@
   # Это правильный способ гарантировать очистку.
   post_tasks:
     - name: "ФИНАЛ: Убираем за собой - удаляем кластер"
-      command: kind delete cluster
+      command: kind delete cluster --name mindbox-test

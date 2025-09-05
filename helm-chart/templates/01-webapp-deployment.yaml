@@ -38,9 +38,8 @@ spec:
       # Описание контейнеров, которые будут работать внутри пода.
       containers:
         - name: webapp-container
-          # Используем готовый, очень легкий образ веб-сервера для демонстрации.
-          # Он просто показывает страницу-приветствие.
-          image: nginxdemos/hello:latest
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           # Указываем, что наш контейнер слушает порт 80.
           ports:
             - containerPort: 80
