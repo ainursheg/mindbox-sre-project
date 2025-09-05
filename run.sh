@@ -56,10 +56,16 @@ install_ansible() {
     print_success "Ansible и python3-kubernetes успешно установлены."
 }
 
+install_helm() {
+    print_warning "Helm не найден. Устанавливаем..."
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    print_success "Helm успешно установлен."
+}
+
 # --- Главный блок ---
 
 # Шаг 1: Проверка Docker
-print_info "Шаг 1/5: Проверка Docker..."
+print_info "Шаг 1/6: Проверка Docker..."
 if ! command -v docker &> /dev/null; then
     print_error "Команда 'docker' не найдена. Пожалуйста, установите Docker."
     exit 1
@@ -81,12 +87,17 @@ command -v kind &> /dev/null || install_kind
 print_success "Kind на месте."
 
 # Шаг 4: Проверка Ansible
-print_info "Шаг 4/5: Проверка Ansible..."
+print_info "Шаг 4/6: Проверка Ansible..."
 command -v ansible &> /dev/null || install_ansible
 print_success "Ansible на месте."
 
-# Шаг 5: Запуск основного сценария
-print_info "Шаг 5/5: Все зависимости на месте. Запускаем Ansible-плейбук..."
+# Шаг 5: Проверка Helm
+print_info "Шаг 5/6: Проверка Helm..."
+command -v helm &> /dev/null || install_helm
+print_success "Helm на месте."
+
+# Шаг 6: Запуск основного сценария
+print_info "Шаг 6/6: Все зависимости на месте. Запускаем Ansible-плейбук..."
 echo "==================================================================================="
 cd ansible/
 ansible-playbook playbook.yml

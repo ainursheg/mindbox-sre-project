@@ -3,7 +3,8 @@ kind: Deployment
 metadata:
   name: load-generator
 spec:
-  replicas: 4 # Запустим сразу 4, чтобы создать достаточную нагрузку
+  # 4 Реплики для пиковой нагрузки, 8 для сверхпиковой
+  replicas: 4
   selector:
     matchLabels:
       app: load-generator

@@ -50,34 +50,14 @@
           fail:
             msg: "Не удалось запустить Metrics Server. Смотри логи и события выше."
 
-    - name: "ШАГ 2.1: Разворачиваем Deployment и ЖДЕМ его готовности"
-      kubernetes.core.k8s:
-        src: ../kubernetes/01-webapp-deployment.yaml
+    - name: "ШАГ 2: Разворачиваем наше приложение с помощью Helm"
+      kubernetes.core.helm:
+        name: webapp-release # Имя нашего релиза в кластере
+        chart_ref: ../helm-chart # Путь к нашему чарту
+        release_namespace: default # Нэймспейс для установки
+        create_namespace: yes
         state: present
-        namespace: default
-        wait: yes
-        wait_timeout: 120
-        wait_condition:
-          type: Available
-          status: "True"
-
-    - name: "ШАГ 2.2: Разворачиваем Service (без ожидания)"
-      kubernetes.core.k8s:
-        src: ../kubernetes/02-webapp-service.yaml
-        state: present
-        namespace: default
-
-    - name: "ШАГ 2.3: Разворачиваем HorizontalPodAutoscaler (без ожидания)"
-      kubernetes.core.k8s:
-        src: ../kubernetes/03-webapp-hpa.yaml
-        state: present
-        namespace: default
-
-    - name: "ШАГ 2.4: Разворачиваем PodDisruptionBudget (без ожидания)"
-      kubernetes.core.k8s:
-        src: ../kubernetes/04-webapp-pdb.yaml
-        state: present
-        namespace: default
+        wait: yes # Говорим Helm дождаться, пока все компоненты станут Ready
 
     - name: "ШАГ 3.1: Даем HPA время на реакцию"
       pause:
@@ -117,9 +97,9 @@
 
     - name: "ШАГ 5: ТЕСТ - Автомасштабирование (HPA)"
       block:
-        - name: "ШАГ 5.1: Запускаем 4 генератора нагрузки"
+        - name: "ШАГ 5.1: Запускаем генератор нагрузки (из отдельного файла)"
           kubernetes.core.k8s:
-            src: ../kubernetes/load-generator.yaml
+            src: files/load-generator.yaml # Путь теперь внутри папки ansible
             state: present
             namespace: default
 
