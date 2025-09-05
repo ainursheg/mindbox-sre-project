@@ -1,0 +1,13 @@
+# --- PodDisruptionBudget (PDB) ---
+# PDB гарантирует, что при плановых работах будет доступно минимальное количество подов.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: webapp-pdb
+spec:
+  # Мы разрешаем, чтобы в любой момент времени был недоступен максимум 1 под.
+  maxUnavailable: 1
+  # PDB будет защищать все поды с меткой 'app: webapp'.
+  selector:
+    matchLabels:
+      app: webapp

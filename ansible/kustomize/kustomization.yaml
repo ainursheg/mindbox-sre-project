@@ -1,0 +1,11 @@
+# Этот файл говорит kustomize, что делать
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 1. Возьми за основу ЛОКАЛЬНЫЙ манифест
+resources:
+  - components.yaml
+
+# 2. Примени к нему наш единственный, всеобъемлющий патч
+patches:
+  - path: metrics-server-full-patch.yaml

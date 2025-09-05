@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+spec:
+  replicas: 4 # Запустим сразу 4, чтобы создать достаточную нагрузку
+  selector:
+    matchLabels:
+      app: load-generator
+  template:
+    metadata:
+      labels:
+        app: load-generator
+    spec:
+      containers:
+      - name: loader
+        image: busybox:latest
+        # Эта команда будет бесконечно запрашивать наш сервис webapp-service, создавая нагрузку
+        command: ["/bin/sh", "-c"]
+        args: ["while true; do wget -q -O- http://webapp-service; done"]
+        resources:
+          limits:
+            # Ограничиваем каждый генератор 0.25 CPU. В сумме они смогут съесть 1 CPU,
+            # чего достаточно для нагрузки, но это не убьет систему.
+            cpu: "250m"

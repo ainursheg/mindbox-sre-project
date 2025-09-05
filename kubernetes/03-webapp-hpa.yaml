@@ -1,0 +1,24 @@
+# --- HorizontalPodAutoscaler (HPA) ---
+# HPA автоматически масштабирует количество подов в Deployment.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: webapp-hpa
+spec:
+  # Указываем, каким Deployment'ом нужно управлять.
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: webapp-deployment
+  # Устанавливаем границы масштабирования: от 2 до 5 подов.
+  minReplicas: 2
+  maxReplicas: 5
+  # Описываем метрики, на которые нужно реагировать.
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        # Цель: поддерживать среднее потребление CPU на уровне 75% от ЗАПРОШЕННОГО (requests.cpu).
+        target:
+          type: Utilization
+          averageUtilization: 75

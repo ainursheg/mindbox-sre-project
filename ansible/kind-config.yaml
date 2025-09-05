@@ -1,0 +1,19 @@
+# Этот файл говорит Kind, как именно сконфигурировать наш кластер.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+- role: worker
+  # Мы "приписываем" эту ноду к зоне "a"
+  labels:
+    topology.kubernetes.io/zone: "zone-a"
+- role: worker
+  labels:
+    topology.kubernetes.io/zone: "zone-a"
+- role: worker
+  # Эту ноду - к зоне "b"
+  labels:
+    topology.kubernetes.io/zone: "zone-b"
+- role: worker
+  labels:
+    topology.kubernetes.io/zone: "zone-c"

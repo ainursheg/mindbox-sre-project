@@ -1,0 +1,10 @@
+# Игнорируем служебные файлы Ansible
+.ansible/
+*.retry
+
+# Игнорируем локальные конфигурации Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/

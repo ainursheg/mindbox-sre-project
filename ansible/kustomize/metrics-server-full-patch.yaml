@@ -1,0 +1,24 @@
+# Этот патч решает все известные проблемы с Metrics Server в Kind
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-server
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      containers:
+      - name: metrics-server
+        # 1. Добавляем необходимый флаг
+        args:
+          - --cert-dir=/tmp
+          - --secure-port=4443
+          - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+          - --kubelet-use-node-status-port
+          - --metric-resolution=15s
+          - --kubelet-insecure-tls
+        # 2. Полностью отключаем ограничения безопасности
+        securityContext:
+          readOnlyRootFilesystem: false
+          runAsNonRoot: false
+          runAsUser: 0

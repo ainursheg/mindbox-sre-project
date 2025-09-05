@@ -1,0 +1,20 @@
+# --- Service ---
+# Service предоставляет стабильную сетевую точку доступа к нашим подам.
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp-service
+spec:
+  # Тип ClusterIP означает, что сервис будет доступен только ВНУТРИ кластера.
+  type: ClusterIP
+  # Этот селектор говорит Сервису: "Ищи все поды с меткой 'app: webapp' и направляй на них трафик".
+  # Так он находит наш под из Deployment'а выше.
+  selector:
+    app: webapp
+  ports:
+    - protocol: TCP
+      # Внешний порт Сервиса. Другие поды будут обращаться на http://webapp-service:80
+      port: 80
+      # Внутренний порт пода, на который нужно перенаправить трафик.
+      # Мы ссылаемся на имя порта, которое дали в Deployment'е.
+      targetPort: http

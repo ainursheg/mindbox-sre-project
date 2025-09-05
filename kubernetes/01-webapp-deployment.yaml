@@ -1,0 +1,83 @@
+# --- Deployment ---
+# Deployment — это инструкция для Kubernetes, как управлять нашими подами.
+# Он следит, чтобы нужное количество копий нашего приложения всегда было запущено.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # Имя нашего Deployment'а
+  name: webapp-deployment
+spec:
+  spec:
+  # ВАЖНО: Параметром 'replicas' управляет HorizontalPodAutoscaler (HPA).
+  # Этот селектор говорит Deployment'у: "Управляй всеми подами, у которых есть метка 'app: webapp'"
+  selector:
+    matchLabels:
+      app: webapp
+  # template — это чертёж, по которому будут создаваться поды.
+  template:
+    metadata:
+      # Даём нашему поду метку 'app: webapp', чтобы Deployment мог его найти.
+      labels:
+        app: webapp
+    spec:
+      # --- Правило распределения подов по разным зонам ---
+      affinity:
+        podAntiAffinity:
+          # required... — это строгое правило. Если планировщик не может его выполнить, под не будет запущен.
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - webapp
+              # Ключ топологии — это "метка" на нодах, по которой мы разделяем "зоны".
+              # В нашем kind-config мы как раз использовали 'topology.kubernetes.io/zone'.
+              topologyKey: "topology.kubernetes.io/zone"
+
+      # Описание контейнеров, которые будут работать внутри пода.
+      containers:
+        - name: webapp-container
+          # Используем готовый, очень легкий образ веб-сервера для демонстрации.
+          # Он просто показывает страницу-приветствие.
+          image: nginxdemos/hello:latest
+          # Указываем, что наш контейнер слушает порт 80.
+          ports:
+            - containerPort: 80
+              # Даем порту имя для удобства
+              name: http
+          
+          # --- Управление ресурсами: запросы и лимиты ---
+          resources:
+            requests:
+              # Запрашиваем минимум, необходимый для стабильной работы.
+              cpu: "100m" # 0.1 CPU
+              memory: "128Mi"
+            limits:
+              # Разрешаем поду "разгоняться" до 500m CPU во время пиков (например, при старте).
+              cpu: "500m" # 0.5 CPU
+              memory: "128Mi"
+
+          # --- Проверки работоспособности (Health Checks) ---
+          
+          # livenessProbe: если проверка не пройдет, Kubernetes перезапустит под.
+          livenessProbe:
+            # Проверяем доступность корневого пути "/" по HTTP.
+            # Наш образ nginxdemos/hello его точно отдает.
+            httpGet:
+              path: /
+              port: http
+            # Начать проверки через 5 секунд после старта контейнера.
+            initialDelaySeconds: 5
+            # Повторять проверку каждые 10 секунд.
+            periodSeconds: 10
+
+          # readinessProbe: если проверка не пройдет, под будет исключен из Service.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            # Начать проверки через 5 секунд после старта контейнера.
+            initialDelaySeconds: 5
+            # Повторять проверку каждые 5 секунд.
+            periodSeconds: 5

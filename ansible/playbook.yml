@@ -1,0 +1,203 @@
+- name: Этап 1 - Развертывание базового приложения в Kind
+  hosts: localhost
+  connection: local
+  gather_facts: no
+
+  tasks:
+    - name: "ШАГ 0: Гарантированная зачистка перед стартом"
+      command: kind delete cluster
+      ignore_errors: yes
+      
+    - name: "ШАГ 1: Создаем локальный кластер Kubernetes (Kind) с 3-мя зонами"
+      command: kind create cluster --config kind-config.yaml
+
+    - name: "ШАГ 1.5: Устанавливаем Metrics Server с помощью Kustomize (из локальных файлов)"
+      # команда kubectl apply -k <папка> применяет kustomization.yaml из этой папки
+      command: kubectl apply -k kustomize/
+
+    - name: "ШАГ 1.6: Ждем, пока под Metrics Server станет готов (с диагностикой)"
+      block:
+        - name: "Ожидание Metrics Server"
+          command: kubectl wait --for=condition=Ready pod -l k8s-app=metrics-server -n kube-system --timeout=90s
+          changed_when: false
+      rescue:
+        - name: "АВАРИЯ: Metrics Server не запустился. Собираем информацию..."
+          debug:
+            msg: "Metrics Server не перешел в состояние Ready за 90 секунд. Выводим логи и события для анализа."
+
+        - name: "Получаем имя пода Metrics Server"
+          command: kubectl get pods -n kube-system -l k8s-app=metrics-server -o jsonpath='{.items[0].metadata.name}'
+          register: metrics_pod_name
+          changed_when: false
+
+        - name: "Выводим события пода (kubectl describe)"
+          command: "kubectl describe pod {{ metrics_pod_name.stdout }} -n kube-system"
+          register: describe_output
+          changed_when: false
+        
+        - debug:
+            var: describe_output.stdout_lines
+
+        - name: "Выводим логи пода (kubectl logs)"
+          command: "kubectl logs {{ metrics_pod_name.stdout }} -n kube-system"
+          register: logs_output
+          changed_when: false
+
+        - debug:
+            var: logs_output.stdout_lines
+        
+        - name: "Провал задачи с полным контекстом"
+          fail:
+            msg: "Не удалось запустить Metrics Server. Смотри логи и события выше."
+
+    - name: "ШАГ 2.1: Разворачиваем Deployment и ЖДЕМ его готовности"
+      kubernetes.core.k8s:
+        src: ../kubernetes/01-webapp-deployment.yaml
+        state: present
+        namespace: default
+        wait: yes
+        wait_timeout: 120
+        wait_condition:
+          type: Available
+          status: "True"
+
+    - name: "ШАГ 2.2: Разворачиваем Service (без ожидания)"
+      kubernetes.core.k8s:
+        src: ../kubernetes/02-webapp-service.yaml
+        state: present
+        namespace: default
+
+    - name: "ШАГ 2.3: Разворачиваем HorizontalPodAutoscaler (без ожидания)"
+      kubernetes.core.k8s:
+        src: ../kubernetes/03-webapp-hpa.yaml
+        state: present
+        namespace: default
+
+    - name: "ШАГ 2.4: Разворачиваем PodDisruptionBudget (без ожидания)"
+      kubernetes.core.k8s:
+        src: ../kubernetes/04-webapp-pdb.yaml
+        state: present
+        namespace: default
+
+    - name: "ШАГ 3.1: Даем HPA время на реакцию"
+      pause:
+        seconds: 15
+        prompt: "Ждем 15 секунд, чтобы HorizontalPodAutoscaler успел создать 2 пода..."
+
+    - name: "ШАГ 3.2: Получаем информацию о запущенных подах"
+      kubernetes.core.k8s_info:
+        kind: Pod
+        label_selectors:
+          - app = webapp
+        namespace: default
+      register: pods_info
+
+    - name: "ШАГ 3.3: Выводим понятную отладочную информацию"
+      vars:
+        pod_nodes: "{{ pods_info.resources | map(attribute='spec.nodeName') | list }}"
+      debug:
+        msg:
+          - "------------------ РЕЗУЛЬТАТЫ ТЕСТА ANTI-AFFINITY ------------------"
+          - "Обнаружено подов: {{ pod_nodes | length }}"
+          - "Они работают на нодах: {{ pod_nodes }}"
+          - "Количество уникальных нод: {{ pod_nodes | unique | length }}"
+          - "---------------------------------------------------------------------"
+
+    - name: "ШАГ 3.4: Проверяем выполнение условия anti-affinity"
+      assert:
+        that:
+          - "pods_info.resources | length == 2"
+          - "pods_info.resources | map(attribute='spec.nodeName') | unique | length == 2"
+        fail_msg: "ОШИБКА ANTI-AFFINITY: Ожидалось 2 пода на 2 РАЗНЫХ нодах."
+        success_msg: "УСПЕХ: Поды корректно распределены по разным нодам."
+
+    - name: "ШАГ 4: Выводим сообщение об успешной настройке"
+      debug:
+        msg: "ПОБЕДА! Вся конфигурация успешно применена. Начинаем стресс-тест HPA..."
+
+    - name: "ШАГ 5: ТЕСТ - Автомасштабирование (HPA)"
+      block:
+        - name: "ШАГ 5.1: Запускаем 4 генератора нагрузки"
+          kubernetes.core.k8s:
+            src: ../kubernetes/load-generator.yaml
+            state: present
+            namespace: default
+
+        - name: "ШАГ 5.2: Даем 90 секунд на создание нагрузки и реакцию HPA"
+          pause:
+            seconds: 90
+            prompt: "Ждем 90 секунд, пока генераторы нагрузки создадут нагрузку на CPU и HPA отреагирует..."
+
+        - name: "ШАГ 5.3: Проверяем, что количество реплик выросло"
+          # Получаем текущее состояние Deployment
+          kubernetes.core.k8s_info:
+            kind: Deployment
+            name: webapp-deployment
+            namespace: default
+          register: deployment_info
+          # Пробуем 5 раз с интервалом в 10 секунд, пока условие не выполнится
+          until: "deployment_info.resources[0].status.replicas > 2"
+          retries: 5
+          delay: 10
+
+        - name: "ШАГ 5.4: Выводим финальный результат"
+          debug:
+            msg: "ПОБЕДА! HPA отработал! Реплик стало: {{ deployment_info.resources[0].status.replicas }}"
+
+        - name: "ФИНАЛЬНЫЙ ОТЧЕТ: Собираем данные перед удалением кластера"
+          block:
+            - name: "Состояние нод"
+              command: "kubectl get nodes -o wide"
+              register: nodes_status
+              changed_when: false
+            - name: "Состояние подов"
+              command: "kubectl get pods -o wide -n default"
+              register: pods_status
+              changed_when: false
+            - name: "Состояние HPA"
+              command: "kubectl get hpa -n default"
+              register: hpa_status
+              changed_when: false
+            - name: "Потребление ресурсов подами"
+              command: "kubectl top pods -n default"
+              register: top_pods
+              changed_when: false
+
+        - name: Вывод финального отчета
+          debug:
+            msg:
+              - "====================== ФИНАЛЬНЫЙ ОТЧЕТ ======================"
+              - " "
+              - "НОДЫ КЛАСТЕРА:"
+              - "{{ nodes_status.stdout_lines }}"
+              - " "
+              - "ПОДЫ ПРИЛОЖЕНИЯ И НАГРУЗКИ:"
+              - "{{ pods_status.stdout_lines }}"
+              - " "
+              - "СОСТОЯНИЕ HORIZONTAL POD AUTOSCALER:"
+              - "{{ hpa_status.stdout_lines }}"
+              - " "
+              - "ПОТРЕБЛЕНИЕ РЕСУРСОВ:"
+              - "{{ top_pods.stdout_lines }}"
+              - " "
+              - "============================================================="
+      rescue:
+        - name: "Обработка ошибки HPA теста: собираем диагностику"
+          # Выполняем команду kubectl get hpa и регистрируем ее вывод
+          command: "kubectl get hpa -n default"
+          register: hpa_status
+          changed_when: false
+
+        - name: "Выводим понятное сообщение об ошибке"
+          fail:
+            msg:
+              - "ОШИБКА HPA: Количество реплик не увеличилось."
+              - "Финальное состояние HPA:"
+              - "{{ hpa_status.stdout }}"
+              - "Возможная причина: HPA не видит метрики (TARGETS = <unknown>). Убедитесь, что Metrics Server работает."
+
+  # Этот блок выполнится после всех основных задач, даже если они завершились с ошибкой.
+  # Это правильный способ гарантировать очистку.
+  post_tasks:
+    - name: "ФИНАЛ: Убираем за собой - удаляем кластер"
+      command: kind delete cluster
